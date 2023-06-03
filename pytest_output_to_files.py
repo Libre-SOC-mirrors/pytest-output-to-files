@@ -242,12 +242,17 @@ class _OutputToFilesPlugin:
     @contextlib.contextmanager
     def __capture_item(self, item, when):
         # type: (pytest.Item, str) -> Generator[Any, Any, Any]
+        builtin_capman = item.config.pluginmanager.getplugin("capturemanager")
+        if builtin_capman is not None:
+            builtin_capman.suspend_global_capture()
         try:
             self.__start(item, when)
             yield
             self.__stop(item, when)
         finally:
             self.__abort()
+            if builtin_capman is not None:
+                builtin_capman.resume_global_capture()
 
     @pytest.hookimpl(tryfirst=True)
     def pytest_keyboard_interrupt(self, excinfo):
