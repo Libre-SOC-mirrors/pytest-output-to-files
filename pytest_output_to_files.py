@@ -12,7 +12,7 @@ if os.name != 'posix':
     raise ValueError(
         f"{sys.platform} is not supported by pytest-output-to-files")
 
-_DEFAULT_LINE_LIMIT = 5000
+_DEFAULT_LINE_LIMIT = 500
 
 
 class _Capture:
