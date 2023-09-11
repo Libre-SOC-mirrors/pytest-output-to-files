@@ -12,11 +12,11 @@ if os.name != 'posix':
     raise ValueError(
         f"{sys.platform} is not supported by pytest-output-to-files")
 
-_DEFAULT_LINE_LIMIT = 500
+_DEFAULT_LINE_LIMIT = 1000
 
 
 class _Capture:
-    def __init__(self, target_attr, line_limit=_DEFAULT_LINE_LIMIT,
+    def __init__(self, target_attr, line_limit,
                  chunk_size=1 << 16):
         # type: (str, int, int) -> None
         self.__target_attr = target_attr
@@ -157,14 +157,14 @@ class _Capture:
         # type: () -> str
         assert self.__file is not None, "can't be called without file"
         start_lines, start_hit_eof = self.__read_lines_at(
-            line_limit=self.__line_limit * 2, pos=0, backwards=False)
+            line_limit=self.__line_limit, pos=0, backwards=False)
         if start_hit_eof:
             return start_lines.decode("utf-8", errors="replace")
-        p = self.__lines_from_start(start_lines, self.__line_limit)
+        p = self.__lines_from_start(start_lines, (self.__line_limit + 1) // 2)
         start_lines = start_lines[:p]
         file_length = self.__file.seek(0, os.SEEK_END)
         end_lines, _ = self.__read_lines_at(
-            line_limit=self.__line_limit, pos=file_length, backwards=True)
+            line_limit=self.__line_limit // 2, pos=file_length, backwards=True)
         if start_lines.endswith(b"\n"):
             start_lines = start_lines[:-1]
         if end_lines.endswith(b"\n"):
@@ -209,12 +209,12 @@ class _Capture:
 
 
 class _OutputToFilesPlugin:
-    def __init__(self, output_dir):
+    def __init__(self, output_dir, line_limit):
         # type: (str) -> None
         self.output_dir = Path(output_dir)
         self.__captures = {
-            "stdout": _Capture("stdout"),
-            "stderr": _Capture("stderr"),
+            "stdout": _Capture("stdout", line_limit=line_limit),
+            "stderr": _Capture("stderr", line_limit=line_limit),
         }
 
     def __repr__(self):
@@ -298,6 +298,19 @@ def pytest_addoption(parser):
         help=('shorten test outputs by storing them in files in DIR and '
               'returning just the first/last few lines'))
 
+    group.addoption(
+        '--shorten-output-lines',
+        action='store',
+        metavar="LINES",
+        help=('change the number of lines shown by the\n'
+              '--shorten-output-dir option'))
+
+    parser.addini(
+        'shorten-output-lines',
+        default=str(_DEFAULT_LINE_LIMIT),
+        help=('change the number of lines shown by the\n'
+              '--shorten-output-dir option'))
+
 
 def pytest_configure(config):
     # type: (pytest.Config) -> None
@@ -306,6 +319,15 @@ def pytest_configure(config):
     output_dir = config.getoption('--shorten-output-dir')
     if output_dir is None:
         output_dir = config.getini('shorten-output-dir')
+    line_limit = config.getoption('--shorten-output-lines')
+    if line_limit is None:
+        line_limit = config.getini('shorten-output-lines')
+    assert isinstance(line_limit, str), "invalid shorten-output-lines"
+    try:
+        line_limit = int(line_limit)
+    except ValueError as e:
+        raise ValueError("invalid shorten-output-lines") from e
     if output_dir != "":
         assert isinstance(output_dir, str), "invalid shorten-output-dir"
-        config.pluginmanager.register(_OutputToFilesPlugin(output_dir))
+        config.pluginmanager.register(_OutputToFilesPlugin(
+            output_dir, line_limit=line_limit))
